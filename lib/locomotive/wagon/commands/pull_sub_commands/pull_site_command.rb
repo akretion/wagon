@@ -3,7 +3,7 @@ module Locomotive::Wagon
   class PullSiteCommand < PullBaseCommand
 
     def _pull
-      attributes = current_site.attributes.slice('name', 'locales', 'domains', 'timezone', 'seo_title', 'meta_keywords', 'meta_description', 'picture_thumbnail_url', 'metafields', 'metafields_schema')
+      attributes = current_site.attributes.slice('name', 'locales', 'domains', 'timezone', 'seo_title', 'meta_keywords', 'meta_description', 'picture_thumbnail_url', 'metafields', 'metafields_schema', 'metafields_ui')
 
       locales.each_with_index do |locale, index|
         if index == 0
@@ -14,6 +14,7 @@ module Locomotive::Wagon
       end if locales.size > 1
 
       decode_metafields(attributes)
+      decode_metafields_ui(attributes)
 
       write_metafields_schema(attributes.delete('metafields_schema'))
 
@@ -39,23 +40,55 @@ module Locomotive::Wagon
       end
     end
 
-    def write_metafields_schema(schema)
-      return if schema.blank?
+    def decode_metafields_schema(schema)
+      if schema.is_a?(Array)
+        schema = array_of_hash_to_hash(schema, 'name') do |namespace|
+          namespace['fields'] = array_of_hash_to_hash(namespace.delete('fields'), 'name')
+        end
+      end
+
+      schema
+    end
+
+    def write_metafields_schema(json)
+      return if json.blank?
+
+      schema = decode_metafields_schema(JSON.parse(json))
 
       File.open(File.join(path, 'config', 'metafields_schema.yml'), 'wb') do |file|
-        file.write JSON.parse(schema).to_yaml
+        file.write schema.to_yaml
       end
     end
 
     def decode_metafields(attributes)
-      metafields = attributes['metafields']
+      decode_json_attribute(attributes, 'metafields') do |metafields|
+        replace_asset_urls_in_hash(metafields)
+      end
+    end
 
-      return if metafields.blank?
+    def decode_metafields_ui(attributes)
+      decode_json_attribute(attributes, 'metafields_ui')
+    end
 
-      # metafields come under a JSON string format.
-      metafields = JSON.parse(metafields)
+    def array_of_hash_to_hash(array, name, &block)
+      {}.tap do |hash|
+        (array || []).each do |element|
+          key = element.delete(name)
+          hash[key] = element
+          yield element if block_given?
+        end
+      end
+    end
 
-      attributes['metafields'] = replace_asset_urls_in_hash(metafields)
+    def decode_json_attribute(attributes, name, &block)
+      value = attributes.delete(name)
+
+      return if value.blank?
+
+      # JSON string -> Hash
+      _value = JSON.parse(value)
+
+      attributes[name] = block_given? ? yield(_value) : _value
     end
 
     def localized_attributes(&block)

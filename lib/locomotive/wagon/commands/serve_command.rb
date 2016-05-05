@@ -2,6 +2,8 @@ require "bundler"
 
 module Locomotive::Wagon
 
+  SiteFinder = Struct.new(:repository, :request) { def find; repository.first; end; }
+
   class ServeCommand < Struct.new(:path, :options, :shell)
 
     def initialize(path, options, shell)
@@ -82,6 +84,14 @@ module Locomotive::Wagon
           config.middleware.insert_before Rack::Lint, Rack::LiveReload, live_reload_port: port
         end
         config.middleware.insert_before Rack::Lint, Locomotive::Wagon::Middlewares::ErrorPage
+
+        config.services_hook = -> (services) {
+          if services.request
+            services.defer(:site_finder) do
+              SiteFinder.new(services.repositories.site, services.request)
+            end
+          end
+        }
       end
       Bundler.require(:default)
     end
@@ -152,7 +162,11 @@ module Locomotive::Wagon
 
         filepath = File.join(File.expand_path(path), 'app', 'views', 'pages', fullpath + (locale != default_locale ? ".#{locale}" : '') + '.liquid')
 
-        message = "[Tip]".light_white + " add a new page in your Wagon site at this location: " + filepath.light_white
+        message = if File.exists?(filepath)
+          "[Warning]".red + ' by default and unless you overide the slug in the YAML header of your page, Wagon will replace underscores by dashes in your page slug. Try this instead: ' + fullpath.dasherize.light_white
+        else
+          "[Tip]".light_white + " add a new page in your Wagon site at this location: " + filepath.light_white
+        end
 
         Locomotive::Common::Logger.info (' ' * 2) + message
       end
