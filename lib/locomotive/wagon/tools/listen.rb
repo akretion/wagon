@@ -24,7 +24,7 @@ module Locomotive::Wagon
         ['config', /\.yml/, [:site, :content_types, :pages, :snippets, :sections, :content_entries, :translations]],
         ['app/views', %r{(pages|snippets|sections)/(.+\.liquid).*}, [:pages, :snippets, :sections]],
         ['app/content_types', /\.yml/, [:content_types, :content_entries]],
-        ['data', /\.(yml|json)/, [:pages, :content_entries]],
+        ['data', /\.(yml|json|md)/, [:pages, :content_entries]],
         ['public', %r{((stylesheets|javascripts)/(.+\.(css|js))).*}, []]
       ]
     end
@@ -47,7 +47,6 @@ module Locomotive::Wagon
       Proc.new do |modified, added, removed|
         resources.each do |resource|
           Locomotive::Common::Logger.info "service=listen action=reload resource=#{resource} timestamp=#{Time.now}"
-
           clear_cache_for(resource, modified + added + removed)
         end
       end
@@ -57,7 +56,11 @@ module Locomotive::Wagon
       keys = case resource
       when :site  then '_sites'
       when :content_entries
-        files.map { |f| "site_1_content_type_#{File.basename(f, '.yml')}_content_entries" }
+        def fname(f)
+          splitpath = f.split(File::SEPARATOR)
+          splitpath[splitpath.index('data') + 1]
+        end
+        files.map { |f| "site_1_content_type_#{File.basename(fname(f), '.yml')}_content_entries" }
       else
         "site_1_#{resource}"
       end
