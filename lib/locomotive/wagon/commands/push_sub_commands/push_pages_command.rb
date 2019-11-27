@@ -19,12 +19,19 @@ module Locomotive::Wagon
 
     def persist(decorated_entity)
       decorated_entity._id = remote_id = remote_entity_id(decorated_entity)
-
+      is_404 = decorated_entity.handle.to_s == '404'
       translated_in(decorated_entity) do |locale|
         if remote_id.nil?
           remote_id = api_client.pages.create(decorated_entity.to_hash)._id
         elsif can_update?(decorated_entity)
-          api_client.pages.update(remote_id, decorated_entity.to_hash, locale)
+          vals = decorated_entity.to_hash
+          # Normally wagon never push the slug but in some website
+          # the 404 page have a broken slug so we force it
+          # TODO we should review the way to manage slug
+          if is_404
+            vals[:slug] = '404'
+          end
+          api_client.pages.update(remote_id, vals, locale)
         else
           raise "The local and the remote (#{remote_entity_fullpath_from_handle(decorated_entity)}) versions of that page have the same handle but they are not in the same folder."
         end
